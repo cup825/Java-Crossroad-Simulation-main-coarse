@@ -118,15 +118,15 @@ public class MiniProjet_DAC extends JFrame {
         feuVoie1Panel.setLayout(null);
 
         feuVoie1Red.setBounds(0, 0, 30, 35);
-        feuVoie1Red.setIcon(new javax.swing.ImageIcon("lights/1.png"));
+        feuVoie1Red.setIcon(new javax.swing.ImageIcon("lights/1*.png"));
         feuVoie1Red.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Red);
         feuVoie1Orange.setBounds(0, 35, 30, 35);
-        feuVoie1Orange.setIcon(new javax.swing.ImageIcon("lights/3.jpg"));
+        feuVoie1Orange.setIcon(new javax.swing.ImageIcon("lights/3*.jpg"));
         feuVoie1Orange.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Orange);
         feuVoie1Green.setBounds(0, 70, 30, 35);
-        feuVoie1Green.setIcon(new javax.swing.ImageIcon("lights/2.jpg"));
+        feuVoie1Green.setIcon(new javax.swing.ImageIcon("lights/2*.jpg"));
         feuVoie1Green.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Green);
 
@@ -335,8 +335,6 @@ public class MiniProjet_DAC extends JFrame {
             createCars = new Thread(new Runnable() { //the work of the thread that creats cars
                 @Override
                 public void run() {
-                    JPanel[] lastCarVoie1 = new JPanel[4];
-                    JPanel[] lastCarVoie2 = new JPanel[4];
                     int voie1Position;
                     int voie2Position;
 
@@ -371,19 +369,8 @@ public class MiniProjet_DAC extends JFrame {
                         }
 
                         for (int i = 0; i < carsPerWave; i++) {
-                            while (true) {
-                                voie1Position = (new Random().nextInt(4)) + 1;
-                                if (lastCarVoie1[voie1Position - 1] == null || lastCarVoie1[voie1Position - 1].getBounds().y >= 20) {
-                                    break;
-                                }
-                            }
-
-                            while (true) {
-                                voie2Position = (new Random().nextInt(4)) + 1;
-                                if (lastCarVoie2[voie2Position - 1] == null || lastCarVoie2[voie2Position - 1].getBounds().x >= 20) {
-                                    break;
-                                }
-                            }
+                            voie1Position = (new Random().nextInt(4)) + 1;//taking random position for the car in voie1
+                            voie2Position = (new Random().nextInt(4)) + 1;//taking random position for the car in voie2
 
                             voitureV1_V2 voitureVoie1;
                             voitureV2_V1 voitureVoie2;
@@ -391,14 +378,10 @@ public class MiniProjet_DAC extends JFrame {
                             C1.setOpaque(true);
                             C1.setBounds(0, -60, 30, 60);
                             crossroadPanel.add(C1);
-                            lastCarVoie1[voie1Position - 1] = C1;
-
                             C2 = new imgVoitureVoie2();
                             C2.setOpaque(true);
                             crossroadPanel.add(C2);
                             C2.setBounds(-60, 0, 60, 30);
-                            lastCarVoie2[voie2Position - 1] = C2;
-
                             voitureVoie1 = new voitureV1_V2(carrefour, C1, voie1Position, voie1Position * speed);//creating the car thread
                             voitureVoie2 = new voitureV2_V1(carrefour, C2, voie2Position, voie2Position * speed);//creating the car thread
                             voitureVoie1.start();
