@@ -16,16 +16,16 @@ import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
-import static mini.projet_dac.carrefourManager.*; 
+import static mini.projet_dac.carrefourManager.*;
 
 public class MiniProjet_DAC extends JFrame {
-    
+
     //<editor-fold defaultstate="collapsed" desc="Variables Declaration">
     carrefourManager carrefour;          //carrefour manager
     lightManager changeFeu;             //light manager
     Thread createCars;                    //thread that manages the creation of the cars
     //Swing components for the graphic interface
-    private JPanel containerPanel;                                              
+    private JPanel containerPanel;
     private JPanel settingPanel;
     private JButton stopButton;
     private JButton startButton;
@@ -57,15 +57,15 @@ public class MiniProjet_DAC extends JFrame {
     int circulationGrow = (new Random().nextInt(8) + 1) * 1000;       // traffic between (1000-->1s, 8000-->8s)
     int carsPerWave = 3;  //number of cars created in each direction every traffic interval
     static AtomicInteger seconds = new AtomicInteger(duree_de_feu.get() / 1000);//seconds for the timer counter
-    AtomicBoolean settingChanged = new AtomicBoolean(false);      //this is used when you change the settings (speed or light duration) 
+    AtomicBoolean settingChanged = new AtomicBoolean(false);      //this is used when you change the settings (speed or light duration)
     static AtomicInteger carNumberInTheStreet = new AtomicInteger(0);   //counter for the cars in the street (v1 or v2)
     static CountDownLatch carCounterInTheStreet;         //coutdownlatch to wait for the cars in the street
     static AtomicBoolean stopButtonIsActive = new AtomicBoolean(true);    //this is used when you press the stop button
-    
-     //</editor-fold>
-    
+
+    //</editor-fold>
+
     public MiniProjet_DAC() {
-        
+
         //<editor-fold defaultstate="collapsed" desc="initialisation of the swing components and configueration of there layout">
         containerPanel = new JPanel();
         settingPanel = new JPanel();
@@ -91,11 +91,11 @@ public class MiniProjet_DAC extends JFrame {
         carCountSlider = new JSlider();
         stopButton = new JButton();
         startButton = new JButton();
-        
+
         crossroadPanel.setLayout(null);
         crossroadPanel.setBounds(0, 0, 1035, 840);
-        
-        
+
+
         feuVoie2Panel.setLayout(null);
 
         feuVoie2Red.setBackground(new java.awt.Color(255, 255, 255));
@@ -111,29 +111,29 @@ public class MiniProjet_DAC extends JFrame {
         feuVoie2Green.setIcon(new javax.swing.ImageIcon("lights/2.jpg"));
         feuVoie2Green.setEnabled(false);
         feuVoie2Panel.add(feuVoie2Green);
-        
+
         feuVoie2Panel.setBounds(270, 540, 105, 30);
         crossroadPanel.add(feuVoie2Panel);
 
         feuVoie1Panel.setLayout(null);
-        
+
         feuVoie1Red.setBounds(0, 0, 30, 35);
-        feuVoie1Red.setIcon(new javax.swing.ImageIcon("lights/1*.png"));
+        feuVoie1Red.setIcon(new javax.swing.ImageIcon("lights/1.png"));
         feuVoie1Red.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Red);
         feuVoie1Orange.setBounds(0, 35, 30, 35);
-        feuVoie1Orange.setIcon(new javax.swing.ImageIcon("lights/3*.jpg"));
+        feuVoie1Orange.setIcon(new javax.swing.ImageIcon("lights/3.jpg"));
         feuVoie1Orange.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Orange);
         feuVoie1Green.setBounds(0, 70, 30, 35);
-        feuVoie1Green.setIcon(new javax.swing.ImageIcon("lights/2*.jpg"));
+        feuVoie1Green.setIcon(new javax.swing.ImageIcon("lights/2.jpg"));
         feuVoie1Green.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Green);
-        
+
         feuVoie1Panel.setBounds(630, 180, 30, 105);
         crossroadPanel.add(feuVoie1Panel);
 
-        
+
         containerPanel.add(crossroadPanel);
 
         settingPanel.setBackground(new java.awt.Color(255, 255, 255));
@@ -180,7 +180,7 @@ public class MiniProjet_DAC extends JFrame {
         speedSlider.addChangeListener(new ChangeListener() {
             public void stateChanged(ChangeEvent event) {
                 if (!settingChanged.get()) { //testing if this is the first setting changed before been applied
-                    settingChanged.set(true); //setting changed waiting to be applied 
+                    settingChanged.set(true); //setting changed waiting to be applied
                     carCounterInTheStreet = new CountDownLatch(carNumberInTheStreet.get()); //initialisation of the countdownlatch with the number of cars in the street to wait for theme before applying setting changes
                 }
                 speed = 8 - speedSlider.getValue() + 1; //reseting the new spped of the cars
@@ -277,12 +277,12 @@ public class MiniProjet_DAC extends JFrame {
         });
         stopButton.setBounds(210, 740, 130, 50);
         settingPanel.add(stopButton);
-        
+
         startButton.setFont(new java.awt.Font("Chalkboard SE", 0, 18)); // NOI18N
         startButton.setText("START");
         startButton.addActionListener(new ActionListener() {
-            
-            public void actionPerformed(ActionEvent arg0) { 
+
+            public void actionPerformed(ActionEvent arg0) {
                 //restarting the cars after the start button pressed
                 creationNewCars(arg0);
             }
@@ -295,21 +295,21 @@ public class MiniProjet_DAC extends JFrame {
 
         containerPanel.setLayout(null);
         containerPanel.setBounds(0, 0, 1440, 840);
-        
+
         setResizable(false);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setBounds(0, 0, 1440, 830);
         add(containerPanel);
-         //</editor-fold>
+        //</editor-fold>
     }
-    
+
     public void creationNewCars(ActionEvent e){
-        
+
         startButton.setEnabled(false);
         stopButton.setEnabled(true);
 
-        // implementation with locks not the best because 
-        //there is no guarantee to wake theme with FIFO 
+        // implementation with locks not the best because
+        //there is no guarantee to wake theme with FIFO
         //it depends on JVM which could make some problem in high speed and big traffic
         /*
         verro2.lock();
@@ -335,6 +335,8 @@ public class MiniProjet_DAC extends JFrame {
             createCars = new Thread(new Runnable() { //the work of the thread that creats cars
                 @Override
                 public void run() {
+                    JPanel[] lastCarVoie1 = new JPanel[4];
+                    JPanel[] lastCarVoie2 = new JPanel[4];
                     int voie1Position;
                     int voie2Position;
 
@@ -354,14 +356,14 @@ public class MiniProjet_DAC extends JFrame {
                                 carCounterInTheStreet.await();
                                 settingChanged.set(false);
                                 if (mainStopedTheTimer.get()) {
-                                     verro.lock();
+                                    verro.lock();
                                     try{
                                         mainStopedTheTimer.set(false);
                                         mainRestartTimer.signal();
                                     }finally{
                                         verro.unlock();
                                     }
-                                    
+
                                 }
                             }
                         } catch (InterruptedException ex) {
@@ -369,8 +371,19 @@ public class MiniProjet_DAC extends JFrame {
                         }
 
                         for (int i = 0; i < carsPerWave; i++) {
-                            voie1Position = (new Random().nextInt(4)) + 1;//taking random position for the car in voie1
-                            voie2Position = (new Random().nextInt(4)) + 1;//taking random position for the car in voie2
+                            while (true) {
+                                voie1Position = (new Random().nextInt(4)) + 1;
+                                if (lastCarVoie1[voie1Position - 1] == null || lastCarVoie1[voie1Position - 1].getBounds().y >= 20) {
+                                    break;
+                                }
+                            }
+
+                            while (true) {
+                                voie2Position = (new Random().nextInt(4)) + 1;
+                                if (lastCarVoie2[voie2Position - 1] == null || lastCarVoie2[voie2Position - 1].getBounds().x >= 20) {
+                                    break;
+                                }
+                            }
 
                             voitureV1_V2 voitureVoie1;
                             voitureV2_V1 voitureVoie2;
@@ -378,11 +391,15 @@ public class MiniProjet_DAC extends JFrame {
                             C1.setOpaque(true);
                             C1.setBounds(0, -60, 30, 60);
                             crossroadPanel.add(C1);
+                            lastCarVoie1[voie1Position - 1] = C1;
+
                             C2 = new imgVoitureVoie2();
                             C2.setOpaque(true);
                             crossroadPanel.add(C2);
                             C2.setBounds(-60, 0, 60, 30);
-                            voitureVoie1 = new voitureV1_V2(carrefour, C1, voie1Position, voie1Position * speed);//creating the car thread 
+                            lastCarVoie2[voie2Position - 1] = C2;
+
+                            voitureVoie1 = new voitureV1_V2(carrefour, C1, voie1Position, voie1Position * speed);//creating the car thread
                             voitureVoie2 = new voitureV2_V1(carrefour, C2, voie2Position, voie2Position * speed);//creating the car thread
                             voitureVoie1.start();
                             voitureVoie2.start();

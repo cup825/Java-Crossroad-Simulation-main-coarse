@@ -11,19 +11,20 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+
 import static mini.projet_dac.MiniProjet_DAC.*;
 
 public class carrefourManager {
-    
+
     //<editor-fold defaultstate="collapsed" desc="Variables Declaration">
-    
+
     static Timer mytimer = new Timer(1000, new ActionListener() {
         @Override
         public void actionPerformed(ActionEvent e) {
-            
-            if(!stopButtonIsActive.get()){
-                    
+            if (!stopButtonIsActive.get()) {
+
                 seconds.decrementAndGet();
                 if (seconds.get() == 0) {
                     seconds.set(duree_de_feu.get() / 1000);
@@ -33,36 +34,60 @@ public class carrefourManager {
         }
     });
 
+    // [并发技术 - ReentrantLock] 互斥锁保护共享状态
     static Lock verro = new ReentrantLock();
+    // [并发技术 - Condition Variables] 条件变量实现等待/唤醒机制
     Condition feuVertVoie1 = verro.newCondition();
     Condition feuVertVoie2 = verro.newCondition();
     Condition voie2_Cars_In_Intersection = verro.newCondition();
     Condition voie1_Cars_In_Intersection = verro.newCondition();
-    boolean feuVert1 = true;
-    boolean feuVert2 = false;
-    int nmbrVoitureIntersection = 0;
-    
-    static Condition mainRestartTimer = verro.newCondition(); //to test if light duration changes than wait until to be applied
-    static AtomicBoolean mainStopedTheTimer = new AtomicBoolean(false);  //this is used when you change the light duration
-    
-    
-    /* //this was when we used locks
-    static Lock verro2 = new ReentrantLock();
-    static Condition restart = verro2.newCondition();
-    */
-    static Semaphore restart = new Semaphore(0,true);
-    
+
+    Condition carSpacingChanged = verro.newCondition();
+
+    // [修复 Bug + 并发技术 - Volatile] 确保对红绿灯的改变对所有线程立即可见，防止红灯违规
+    volatile boolean feuVert1 = true;
+    volatile boolean feuVert2 = false;
+
+    // [修复 Bug] 分离计数器：Voie1/Voie2 各自独立，防止灯错误切换导致碰撞
+    int nmbrVoitureIntersectionV1 = 0;
+    int nmbrVoitureIntersectionV2 = 0;
+
+    static Condition mainRestartTimer = verro.newCondition();
+    static AtomicBoolean mainStopedTheTimer = new AtomicBoolean(false);
+
+    // [并发技术 - Semaphore] 门控机制：START释放许可，STOP回收许可
+    static Semaphore restart = new Semaphore(0, true);
+
     int[] voie1PositionPossible = {420, 470, 530, 580};
     int[] voie2PositionPossible = {327, 369, 457, 500};
 
+    static final int CAR_SPACING = 80;
+
     int[] voit1stopPosition = {225, 225, 225, 225};
+    // [并发技术 - AtomicIntegerArray] 原子数组，配合 Lock 保证停止位置的原子性
     AtomicIntegerArray voit1stopPositionAtomic = new AtomicIntegerArray(voit1stopPosition);
 
     int[] voit2stopPosition = {310, 310, 310, 310};
     AtomicIntegerArray voit2stopPositionAtomic = new AtomicIntegerArray(voit2stopPosition);
 
     //</editor-fold>
-    
+
+    // [并发技术 - Synchronized] 同步方法：保证 Swing UI 线程安全
+    private synchronized void setCarBounds(JPanel car, int x, int y, int w, int h) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            car.setBounds(x, y, w, h);
+            return;
+        }
+        SwingUtilities.invokeLater(() -> car.setBounds(x, y, w, h));
+    }
+
+    // 暂停检查：如果 STOP 被按下，线程阻塞直到 START 释放许可
+    private void pauseIfStopped() throws InterruptedException {
+        if (stopButtonIsActive.get()) {
+            restart.acquire();
+        }
+    }
+
     public void Intersection() {
         /*  //this was when we used locks
         verro2.lock();
@@ -76,15 +101,13 @@ public class carrefourManager {
             verro2.unlock();
         }
         */
-        
+
         try {
-            if(stopButtonIsActive.get()){
-                    restart.acquire();
-            }
+            pauseIfStopped();
         } catch (InterruptedException ex) {
-               System.out.println(ex.getMessage());
+            System.out.println(ex.getMessage());
         }
-        
+
         verro.lock();
         try {
             if (mytimer.isRunning()) {
@@ -98,13 +121,13 @@ public class carrefourManager {
             }
 
             if (feuVert1) {
-                
                 feuVert1 = false;
-                
-                if (nmbrVoitureIntersection != 0) {
+
+                // [修复 Bug] while 循环避免虚假唤醒；等待 Voie1 计数器变为0
+                while (nmbrVoitureIntersectionV1 != 0) {
                     voie1_Cars_In_Intersection.await();
                 }
-                
+
                 feuVert2 = true;
                 feuVoie1Orange.setEnabled(false);
                 feuVoie2Orange.setEnabled(false);
@@ -113,15 +136,15 @@ public class carrefourManager {
                 feuVoie1Red.setEnabled(true);
                 feuVoie2Green.setEnabled(true);
                 feuVertVoie2.signalAll();
-            
+
             } else {
-                
                 feuVert2 = false;
-                
-                if (nmbrVoitureIntersection != 0) {
+
+                // [修复 Bug] while 循环避免虚假唤醒；等待 Voie2 计数器变为0
+                while (nmbrVoitureIntersectionV2 != 0) {
                     voie2_Cars_In_Intersection.await();
                 }
-                
+
                 feuVert1 = true;
                 feuVoie1Orange.setEnabled(false);
                 feuVoie2Orange.setEnabled(false);
@@ -131,14 +154,14 @@ public class carrefourManager {
                 feuVoie2Green.setEnabled(false);
                 feuVertVoie1.signalAll();
             }
-            
+
             if (mainStopedTheTimer.get()) {//if the main change light duration
                 mainRestartTimer.await();
             }
             seconds.set(duree_de_feu.get() / 1000);
             lightTimer.setText(String.valueOf(seconds.get()));
             mytimer.start();
-            
+
         } catch (InterruptedException ex) {
             System.out.println(ex.getMessage());
         } finally {
@@ -147,186 +170,179 @@ public class carrefourManager {
     }
 
     public void traversee1(JPanel C, int p, int vitess) {
-
         try {
+            // Phase 1: 接近停止线
+            // [修复 Bug - 加锁保护] 防止多车竞态导致碰撞
+            int myStopPos;
+            verro.lock();
+            try {
+                myStopPos = voit1stopPositionAtomic.get(p - 1);
+                voit1stopPositionAtomic.set(p - 1, myStopPos - CAR_SPACING);
+            } finally {
+                verro.unlock();
+            }
 
-            for (int j = -60; j < 830; j++) {
-                if (voit1stopPositionAtomic.get(p - 1) == -95) {
-                    break;
+            for (int j = -60; j < myStopPos; j++) {
+                pauseIfStopped();
+                setCarBounds(C, voie1PositionPossible[p - 1], j, 30, 60);
+                Thread.sleep(vitess);
+            }
+
+            setCarBounds(C, voie1PositionPossible[p - 1], myStopPos, 30, 60);
+
+            // Phase 2: 等待绿灯
+            // [修复 Bug] 计数器增加在锁内，防止红灯违规
+            verro.lock();
+            try {
+                while (!feuVert1) {
+                    feuVertVoie1.await();
                 }
+                nmbrVoitureIntersectionV1++;
+            } finally {
+                verro.unlock();
+            }
+
+            // Phase 3: 穿过路口
+            boolean spacingRestored = false;
+
+            for (int j = myStopPos; j < 555; j++) {
+                pauseIfStopped();
+                setCarBounds(C, voie1PositionPossible[p - 1], j, 30, 60);
+
+                if (!spacingRestored && j >= myStopPos + CAR_SPACING) {
+                    verro.lock();
+                    try {
+                        voit1stopPositionAtomic.set(p - 1,
+                                voit1stopPositionAtomic.get(p - 1) + CAR_SPACING);
+                        carSpacingChanged.signalAll();
+                    } finally {
+                        verro.unlock();
+                    }
+                    spacingRestored = true;
+                }
+
+                Thread.sleep(vitess);
+            }
+
+            if (!spacingRestored) {
+                verro.lock();
                 try {
-                    if(stopButtonIsActive.get()){
-                            restart.acquire();
-                    }
-                } catch (InterruptedException ex) {
-                       System.out.println(ex.getMessage());
+                    voit1stopPositionAtomic.set(p - 1,
+                            voit1stopPositionAtomic.get(p - 1) + CAR_SPACING);
+                    carSpacingChanged.signalAll();
+                } finally {
+                    verro.unlock();
                 }
-                /*
-                verro2.lock();
-                try{
-                    if(stopButtonIsActive.get()){
-                        restart.await();
-                    }
-                }finally{
-                    verro2.unlock();
+            }
+
+            verro.lock();
+            try {
+                nmbrVoitureIntersectionV1--;
+                if (nmbrVoitureIntersectionV1 == 0 && !feuVert1) {
+                    voie1_Cars_In_Intersection.signal();
                 }
-                */
-                if (C.getBounds().y == voit1stopPositionAtomic.get(p - 1)) {
+            } finally {
+                verro.unlock();
+            }
 
-                    //changerStopPositionVoie1(p,true);
-                    voit1stopPositionAtomic.set(p - 1, voit1stopPositionAtomic.get(p - 1) - 80);
-                    verro.lock();
-                    try {
-                        while (!feuVert1) {
-                            feuVertVoie1.await();
-                        }
-                    } finally {
-                        verro.unlock();
-                    }
-
-                    nmbrVoitureIntersection++;
-                    circuler("Voie 1", C, p, j, vitess);
-
-                    verro.lock();
-                    try {
-                        j = 555;
-                        nmbrVoitureIntersection--;
-                        if (nmbrVoitureIntersection == 0 && !feuVert1) {
-                           voie1_Cars_In_Intersection.signal();
-                        }
-                    } finally {
-                        verro.unlock();
-                    }
-                }
-                
-                C.setBounds(voie1PositionPossible[p - 1], j, 30, 60); //p%80 pour regler la position de la voiture dans la rue(gauche ,droite,centre)
+            // Phase 4: 离开
+            for (int j = 555; j < 830; j++) {
+                pauseIfStopped();
+                setCarBounds(C, voie1PositionPossible[p - 1], j, 30, 60);
                 Thread.sleep(vitess);
             }
 
         } catch (InterruptedException ex) {
             Logger.getLogger(carrefourManager.class.getName()).log(Level.SEVERE, null, ex);
         }
-
     }
-    
+
     public void traversee2(JPanel C, int p, int vitess) {
-
         try {
+            // Phase 1: 接近停止线
+            // [修复 Bug - 加锁保护] 防止多车竞态导致碰撞（Voie2 版本）
+            int myStopPos;
+            verro.lock();
+            try {
+                myStopPos = voit2stopPositionAtomic.get(p - 1);
+                voit2stopPositionAtomic.set(p - 1, myStopPos - CAR_SPACING);
+            } finally {
+                verro.unlock();
+            }
 
-            for (int j = -60; j < 1035; j++) {
-                
-                if (voit2stopPositionAtomic.get(p - 1) == -90) {
-                    break;
+            for (int j = -60; j < myStopPos; j++) {
+                pauseIfStopped();
+                setCarBounds(C, j, voie2PositionPossible[p - 1], 60, 30);
+                Thread.sleep(vitess);
+            }
+
+            setCarBounds(C, myStopPos, voie2PositionPossible[p - 1], 60, 30);
+
+            // Phase 2: 等待绿灯
+            // [修复 Bug] 计数器增加在锁内，防止红灯违规
+            verro.lock();
+            try {
+                while (!feuVert2) {
+                    feuVertVoie2.await();
                 }
+                nmbrVoitureIntersectionV2++;
+            } finally {
+                verro.unlock();
+            }
+
+            // Phase 3: 穿过路口
+            boolean spacingRestored = false;
+
+            for (int j = myStopPos; j < 640; j++) {
+                pauseIfStopped();
+                setCarBounds(C, j, voie2PositionPossible[p - 1], 60, 30);
+
+                if (!spacingRestored && j >= myStopPos + CAR_SPACING) {
+                    verro.lock();
+                    try {
+                        voit2stopPositionAtomic.set(p - 1,
+                                voit2stopPositionAtomic.get(p - 1) + CAR_SPACING);
+                        carSpacingChanged.signalAll();
+                    } finally {
+                        verro.unlock();
+                    }
+                    spacingRestored = true;
+                }
+
+                Thread.sleep(vitess);
+            }
+
+            if (!spacingRestored) {
+                verro.lock();
                 try {
-                    if(stopButtonIsActive.get()){
-                            restart.acquire();
-                    }
-                } catch (InterruptedException ex) {
-                       System.out.println(ex.getMessage());
+                    voit2stopPositionAtomic.set(p - 1,
+                            voit2stopPositionAtomic.get(p - 1) + CAR_SPACING);
+                    carSpacingChanged.signalAll();
+                } finally {
+                    verro.unlock();
                 }
-                /*
-                verro2.lock();
-                try{
-                    if(stopButtonIsActive.get()){
-                        restart.await();
-                    }
-                }finally{
-                    verro2.unlock();
-                }
-                */
-                if (C.getBounds().x == voit2stopPositionAtomic.get(p - 1)) {
-                    //changerStopPositionVoie2(p,true);
-                    voit2stopPositionAtomic.set(p - 1, voit2stopPositionAtomic.get(p - 1) - 80);
-                    verro.lock();
-                    try {
-                        while (!feuVert2) {
-                            feuVertVoie2.await();
-                        }
+            }
 
-                    } finally {
-                        verro.unlock();
-                    }
-                    nmbrVoitureIntersection++;
-                    circuler("Voie 2", C, p, j, vitess);
-                    verro.lock();
-                    try {
-                        j = 640;
-                        nmbrVoitureIntersection--;
-                        if (nmbrVoitureIntersection == 0 && !feuVert2) {
-                           voie2_Cars_In_Intersection.signal();
-                        }
-                    } finally {
-                        verro.unlock();
-                    }
+            verro.lock();
+            try {
+                nmbrVoitureIntersectionV2--;
+                if (nmbrVoitureIntersectionV2 == 0 && !feuVert2) {
+                    voie2_Cars_In_Intersection.signal();
                 }
-                C.setBounds(j, voie2PositionPossible[p - 1], 60, 30);
+            } finally {
+                verro.unlock();
+            }
+
+            // Phase 4: 离开
+            for (int j = 640; j < 1035; j++) {
+                pauseIfStopped();
+                setCarBounds(C, j, voie2PositionPossible[p - 1], 60, 30);
                 Thread.sleep(vitess);
             }
 
         } catch (InterruptedException ex) {
             Logger.getLogger(carrefourManager.class.getName()).log(Level.SEVERE, null, ex);
         }
-
-    }
-    
-    public void circuler(String laVoie, JPanel C, int p, int possitionCirculation, int vitess) {
-
-        try {
-            if (laVoie.equals("Voie 1")) {
-
-                voit1stopPositionAtomic.set(p - 1, voit1stopPositionAtomic.get(p - 1) + 80);
-                for (int j = possitionCirculation; j < 555; j++) {// --> 555 la fin de carrfeur 
-                    try {
-                        if(stopButtonIsActive.get()){
-                                restart.acquire();
-                        }
-                    } catch (InterruptedException ex) {
-                           System.out.println(ex.getMessage());
-                    }
-                    /*
-                    verro2.lock();
-                    try{
-                        if(stopButtonIsActive.get()){
-                            restart.await();
-                        }
-                    }finally{
-                        verro2.unlock();
-                    }
-                    */
-                    C.setBounds(voie1PositionPossible[p - 1], j, 30, 60);
-                    Thread.sleep(vitess);
-                }
-            } else if (laVoie.equals("Voie 2")) {
-
-                voit2stopPositionAtomic.set(p - 1, voit2stopPositionAtomic.get(p - 1) + 80);
-                for (int j = possitionCirculation; j < 640; j++) {// --> 640 la fin de carrfeur
-                    try {
-                        if(stopButtonIsActive.get()){
-                                restart.acquire();
-                        }
-                    } catch (InterruptedException ex) {
-                           System.out.println(ex.getMessage());
-                    }
-                    /*
-                    verro2.lock();
-                    try{
-                        if(stopButtonIsActive.get()){
-                            restart.await();
-                        }
-                    }finally{
-                        verro2.unlock();
-                    }
-                    */
-                    C.setBounds(j, voie2PositionPossible[p - 1], 60, 30);
-                    Thread.sleep(vitess);
-                }
-            }
-
-        } catch (InterruptedException ex) {
-            Logger.getLogger(carrefourManager.class.getName()).log(Level.SEVERE, null, ex);
-        }
-
     }
 
 }
