@@ -6,15 +6,17 @@ import static mini.projet_dac.MiniProjet_DAC.carCounterInTheStreet;
 import static mini.projet_dac.MiniProjet_DAC.carNumberInTheStreet;
 
 
+// Voie 1 car thread — moves top-to-bottom on the vertical road.
+// Each instance is a separate thread; concurrency is managed by
+// carrefourManager via ReentrantLock, Conditions, and Semaphore.
 public class voitureV1_V2 extends Thread {
     
-    //<editor-fold defaultstate="collapsed" desc="Variables Declaration">
+    //Variables Declaration
     int matricule;
-    int p;
-    int vitess;
+    int p;          // lane index (1-4)
+    int vitess;     // speed (sleep ms per pixel)
     carrefourManager gestionnaire;
-    JPanel car;
-    //</editor-fold>
+    JPanel car;     // the Swing panel representing this car
     
     public voitureV1_V2(carrefourManager gestionnaire, JPanel Car, int p ,int vitess){
         this.car = Car;
@@ -24,12 +26,16 @@ public class voitureV1_V2 extends Thread {
     }
     
     public void run(){
-        //System.out.println("la voiture sur voie 1");
+        // Concurrency technique: AtomicInteger increment/decrement
+        // to track how many cars are currently on the road, used by
+        // CountDownLatch for settings-change synchronisation.
         carNumberInTheStreet.incrementAndGet();
-        gestionnaire.traversee1(car,p,vitess);
+
+        // Call the FIXED traversal method (4-phase: approach, wait, cross, exit)
+        gestionnaire.traversee1(car, p, vitess);
+
         carNumberInTheStreet.decrementAndGet();
         if(carCounterInTheStreet!=null)
             carCounterInTheStreet.countDown();
-        //System.out.println("la voiture "+matricule+" sortir du voie 1");
     }
 }

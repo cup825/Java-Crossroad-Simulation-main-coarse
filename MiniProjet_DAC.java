@@ -118,15 +118,15 @@ public class MiniProjet_DAC extends JFrame {
         feuVoie1Panel.setLayout(null);
         
         feuVoie1Red.setBounds(0, 0, 30, 35);
-        feuVoie1Red.setIcon(new javax.swing.ImageIcon("lights/1*.png"));
+        feuVoie1Red.setIcon(new javax.swing.ImageIcon("lights/1.png"));
         feuVoie1Red.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Red);
         feuVoie1Orange.setBounds(0, 35, 30, 35);
-        feuVoie1Orange.setIcon(new javax.swing.ImageIcon("lights/3*.jpg"));
+        feuVoie1Orange.setIcon(new javax.swing.ImageIcon("lights/3.jpg"));
         feuVoie1Orange.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Orange);
         feuVoie1Green.setBounds(0, 70, 30, 35);
-        feuVoie1Green.setIcon(new javax.swing.ImageIcon("lights/2*.jpg"));
+        feuVoie1Green.setIcon(new javax.swing.ImageIcon("lights/2.jpg"));
         feuVoie1Green.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Green);
         
