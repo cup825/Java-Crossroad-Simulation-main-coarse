@@ -39,49 +39,33 @@ public class carrefourManager {
         }
     });
 
-    /*
-     * Concurrency technique: ReentrantLock
-     * This lock protects the shared traffic-light state, waiting queues,
-     * stop positions, and the number of cars inside the intersection.
-     * These values are accessed by multiple car threads and the traffic light controller thread.
-     */
     static Lock verro = new ReentrantLock();
 
-    /*
-     * Concurrency technique: Condition
-     * Car threads wait when they cannot pass, and the traffic light controller thread
-     * waits until the current road has cleared the intersection.
-     * This avoids busy-waiting.
-     */
     Condition feuVertVoie1 = verro.newCondition();
     Condition feuVertVoie2 = verro.newCondition();
     Condition voie2_Cars_In_Intersection = verro.newCondition();
     Condition voie1_Cars_In_Intersection = verro.newCondition();
 
-    // Used to notify threads when car spacing or stop-position state changes.
-    Condition carSpacingChanged = verro.newCondition();
+    Condition carSpacingChanged = verro.newCondition(); // Condition by Ziyue Ren: notifies spacing or stop-position changes.
 
     /*
-     * Used to notify waiting cars when the overall traffic state changes.
-     * For example, after a light switch, the end of a yellow phase,
-     * or when the front car leaves its waiting position.
+     * Notifies waiting cars when the overall traffic state changes, such as
+     * a light switch, the end of a yellow phase, or a front car leaving its waiting position.
      */
-    Condition trafficStateChanged = verro.newCondition();
+    Condition trafficStateChanged = verro.newCondition(); // Condition by Ziyue Ren: notifies general traffic-state changes.
 
     /*
-     * Concurrency technique: volatile
-     * These traffic-light flags are written by the traffic light controller thread and read by car threads.
-     * volatile ensures that updates to these flags are visible to other threads.
+     * The light states are read by car threads and written by the traffic light controller thread.
+     * volatile makes the updated state visible to other threads.
      */
-    volatile boolean feuVert1 = true;
-    volatile boolean feuVert2 = false;
+    volatile boolean feuVert1 = true; // volatile by Ziyue Ren: shares Voie1 green-light state between threads.
+    volatile boolean feuVert2 = false; // volatile by Ziyue Ren: shares Voie2 green-light state between threads.
 
     /*
-     * Yellow-phase flag.
-     * During the yellow phase, cars still waiting are not allowed to get new permission to enter the intersection.
-     * Cars that have already entered the intersection can continue passing.
+     * During the yellow phase, cars still waiting are not allowed to get new permission
+     * to enter the intersection, while cars already inside can continue passing.
      */
-    volatile boolean yellowPhase = false;
+    volatile boolean yellowPhase = false; // volatile by Ziyue Ren: shares yellow-phase state between threads.
 
     /*
      * Count cars inside the intersection separately for the two directions.
@@ -93,7 +77,7 @@ public class carrefourManager {
     /*
      * Front stop positions.
      * Only the car at the front stop position can enter the intersection
-     * when the light is green and it is not the yellow phase.
+     * when the light is green, and it is not the yellow phase.
      */
     static final int VOIE1_FRONT_STOP = 225;
     static final int VOIE2_FRONT_STOP = 310;
@@ -139,24 +123,13 @@ public class carrefourManager {
             new HashSet<Integer>()
     };
 
-    /*
-     * When the main UI changes the traffic-light duration, the traffic light controller thread
-     * can wait here until the new setting has been applied.
-     */
-    static Condition mainRestartTimer = verro.newCondition();
+    static Condition mainRestartTimer = verro.newCondition(); //to test if light duration changes than wait until to be applied
+    static AtomicBoolean mainStopedTheTimer = new AtomicBoolean(false);  //this is used when you change the light duration
 
-    /*
-     * Concurrency technique: AtomicBoolean
-     * This flag is shared by the UI thread and the traffic light controller thread.
-     */
-    static AtomicBoolean mainStopedTheTimer = new AtomicBoolean(false);
-
-    /*
-     * Concurrency technique: Semaphore
-     * Used as the START / STOP gate.
-     * In STOP state, threads wait in pauseIfStopped().
-     * After START, they continue running.
-     */
+    /* //this was when we used locks
+    static Lock verro2 = new ReentrantLock();
+    static Condition restart = verro2.newCondition();
+    */
     static Semaphore restart = new Semaphore(0, true);
 
     int[] voie1PositionPossible = {420, 470, 530, 580};
@@ -165,55 +138,43 @@ public class carrefourManager {
     static final int CAR_SPACING = 80;
 
     int[] voit1stopPosition = {225, 225, 225, 225};
-
-    /*
-     * Concurrency technique: AtomicIntegerArray
-     * Stores the next available waiting position for each lane.
-     * A single read or write is atomic; when get and set are used together,
-     * the operation is still protected by verro.
-     */
     AtomicIntegerArray voit1stopPositionAtomic = new AtomicIntegerArray(voit1stopPosition);
 
     int[] voit2stopPosition = {310, 310, 310, 310};
-
-    // Waiting-position array for Voie2. It has the same role as the Voie1 array.
     AtomicIntegerArray voit2stopPositionAtomic = new AtomicIntegerArray(voit2stopPosition);
 
     //</editor-fold>
 
     /*
-     * Concurrency technique: EDT handoff / SwingUtilities.invokeLater
-     * Swing components should be updated on the EDT.
-     * Car threads only calculate positions; the actual UI update is sent to the EDT.
+     * Swing components should be updated on the Event Dispatch Thread.
+     * Car threads calculate positions, and this helper sends the actual UI update to the EDT.
      */
-    private synchronized void setCarBounds(JPanel car, int x, int y, int w, int h) {
+    private synchronized void setCarBounds(JPanel car, int x, int y, int w, int h) { // synchronized by Ziyue Ren: serialises calls to this UI update helper.
         if (SwingUtilities.isEventDispatchThread()) {
             car.setBounds(x, y, w, h);
             return;
         }
-        SwingUtilities.invokeLater(() -> car.setBounds(x, y, w, h));
+        SwingUtilities.invokeLater(() -> car.setBounds(x, y, w, h)); // SwingUtilities.invokeLater by Ziyue Ren: updates Swing UI on the EDT.
     }
 
-    // Pause the current thread in STOP state, and continue after START.
     private void pauseIfStopped() throws InterruptedException {
         if (stopButtonIsActive.get()) {
             restart.acquire();
         }
     }
 
-    // Check whether the target waiting position for Voie1 is free. This should be called while holding verro.
-    private boolean voie1TargetIsFree(int lane, int targetPosition) {
+    private boolean voie1TargetIsFree(int lane, int targetPosition) { // Checks whether the target waiting position for Voie1 is free while holding verro.
         return !voie1WaitingPositions[lane].containsValue(targetPosition)
                 && !voie1ReservedPositions[lane].contains(targetPosition);
     }
 
-    // Check whether the target waiting position for Voie2 is free. This should be called while holding verro.
-    private boolean voie2TargetIsFree(int lane, int targetPosition) {
+    private boolean voie2TargetIsFree(int lane, int targetPosition) { // Checks whether the target waiting position for Voie2 is free while holding verro.
         return !voie2WaitingPositions[lane].containsValue(targetPosition)
                 && !voie2ReservedPositions[lane].contains(targetPosition);
     }
 
     /*
+     * ReentrantLock + Condition by Ziyue Ren:
      * Waiting and moving-forward logic for Voie1.
      * A car can enter the intersection only when it is at the front stop position,
      * the light is green, and it is not the yellow phase.
@@ -226,8 +187,7 @@ public class carrefourManager {
 
         verro.lock();
         try {
-            // Register the current car's waiting position so the following cars can check whether the front is free.
-            voie1WaitingPositions[lane].put(C, currentStopPos);
+            voie1WaitingPositions[lane].put(C, currentStopPos); // Registers this car's waiting position so following cars can check whether the front is free.
             trafficStateChanged.signalAll();
         } finally {
             verro.unlock();
@@ -240,24 +200,22 @@ public class carrefourManager {
 
             verro.lock();
             try {
-                // Only the front car can enter the intersection when the light is green and not yellow.
-                if (currentStopPos == VOIE1_FRONT_STOP && feuVert1 && !yellowPhase) {
+                if (currentStopPos == VOIE1_FRONT_STOP && feuVert1 && !yellowPhase) { // Only the front car can enter when the light is green and not yellow.
                     nmbrVoitureIntersectionV1++;
                     canGo = true;
                 } else {
                     int nextStopPos = Math.min(currentStopPos + CAR_SPACING, VOIE1_FRONT_STOP);
 
-                    // If the position in front is free, reserve it first and then move forward.
-                    if (nextStopPos > currentStopPos && voie1TargetIsFree(lane, nextStopPos)) {
+                    if (nextStopPos > currentStopPos && voie1TargetIsFree(lane, nextStopPos)) { // Reserves the free position in front before moving forward.
                         targetStopPos = nextStopPos;
                         voie1ReservedPositions[lane].add(targetStopPos);
                         shouldMoveForward = true;
                     } else {
                         /*
                          * If the car cannot pass or move forward, wait for the traffic state to change.
-                         * Timed await is used to avoid waiting forever if a signal is missed.
+                         * Timed await avoids waiting forever if a signal is missed.
                          */
-                        trafficStateChanged.await(50, TimeUnit.MILLISECONDS);
+                        trafficStateChanged.await(50, TimeUnit.MILLISECONDS); // Condition.await by Ziyue Ren: waits without busy-waiting.
                     }
                 }
             } finally {
@@ -279,9 +237,8 @@ public class carrefourManager {
 
                 verro.lock();
                 try {
-                    // After moving forward, update the waiting position and release the reserved position.
-                    voie1WaitingPositions[lane].put(C, targetStopPos);
-                    voie1ReservedPositions[lane].remove(targetStopPos);
+                    voie1WaitingPositions[lane].put(C, targetStopPos); // Updates the waiting position after moving forward.
+                    voie1ReservedPositions[lane].remove(targetStopPos); // Releases the reserved position after the move is complete.
                     currentStopPos = targetStopPos;
                     trafficStateChanged.signalAll();
                 } finally {
@@ -292,6 +249,7 @@ public class carrefourManager {
     }
 
     /*
+     * ReentrantLock + Condition by Ziyue Ren:
      * Waiting and moving-forward logic for Voie2.
      * The logic is the same as Voie1, but cars move along the x-axis.
      */
@@ -315,8 +273,7 @@ public class carrefourManager {
 
             verro.lock();
             try {
-                // Only the front horizontal car can enter the intersection when the light is green and not yellow.
-                if (currentStopPos == VOIE2_FRONT_STOP && feuVert2 && !yellowPhase) {
+                if (currentStopPos == VOIE2_FRONT_STOP && feuVert2 && !yellowPhase) { // Only the front horizontal car can enter when the light is green and not yellow.
                     nmbrVoitureIntersectionV2++;
                     canGo = true;
                 } else {
@@ -327,8 +284,7 @@ public class carrefourManager {
                         voie2ReservedPositions[lane].add(targetStopPos);
                         shouldMoveForward = true;
                     } else {
-                        // Wait for the traffic state to change, then check again whether the car can move.
-                        trafficStateChanged.await(50, TimeUnit.MILLISECONDS);
+                        trafficStateChanged.await(50, TimeUnit.MILLISECONDS); // Condition.await by Ziyue Ren: waits without busy-waiting and checks again later.
                     }
                 }
             } finally {
@@ -350,8 +306,7 @@ public class carrefourManager {
 
                 verro.lock();
                 try {
-                    // After moving forward, update the waiting position and notify other cars to check again.
-                    voie2WaitingPositions[lane].put(C, targetStopPos);
+                    voie2WaitingPositions[lane].put(C, targetStopPos); // Updates the waiting position after moving forward.
                     voie2ReservedPositions[lane].remove(targetStopPos);
                     currentStopPos = targetStopPos;
                     trafficStateChanged.signalAll();
@@ -363,6 +318,7 @@ public class carrefourManager {
     }
 
     /*
+     * ReentrantLock + Condition by Ziyue Ren:
      * Release the original waiting position only after the car has moved one car spacing.
      * This allows the following car to move forward without overlapping the front car.
      */
@@ -379,8 +335,7 @@ public class carrefourManager {
         }
     }
 
-    // Voie2 version of releasing the waiting position.
-    private void releaseVoie2WaitingPosition(JPanel C, int p) {
+    private void releaseVoie2WaitingPosition(JPanel C, int p) { // Voie2 version of releasing the waiting position.
         int lane = p - 1;
 
         verro.lock();
@@ -415,13 +370,11 @@ public class carrefourManager {
 
         verro.lock();
         try {
-            // Lock the light-switching process so car threads cannot read a half-updated traffic state.
             if (mytimer.isRunning()) {
                 mytimer.stop();
 
-                // Entering the yellow phase stops waiting cars from gaining new permission to pass.
-                yellowPhase = true;
-                trafficStateChanged.signalAll();
+                yellowPhase = true; // volatile by Ziyue Ren: prevents waiting cars from getting new permission during the yellow phase.
+                trafficStateChanged.signalAll(); // Condition.signalAll by Ziyue Ren: wakes cars to re-check the changed yellow-phase state.
 
                 feuVoie1Orange.setEnabled(true);
                 feuVoie2Orange.setEnabled(true);
@@ -434,13 +387,11 @@ public class carrefourManager {
             if (feuVert1) {
                 feuVert1 = false;
 
-                // Wait until all Voie1 cars that have entered the intersection have left.
                 while (nmbrVoitureIntersectionV1 != 0) {
-                    voie1_Cars_In_Intersection.await();
+                    voie1_Cars_In_Intersection.await(); // Condition.await by Ziyue Ren: waits until all Voie1 cars already inside have left.
                 }
 
-                // After the current direction is clear, end the yellow phase and switch Voie2 to green.
-                yellowPhase = false;
+                yellowPhase = false; // Ends the yellow phase after the current direction is clear.
                 trafficStateChanged.signalAll();
 
                 feuVert2 = true;
@@ -451,20 +402,17 @@ public class carrefourManager {
                 feuVoie1Red.setEnabled(true);
                 feuVoie2Green.setEnabled(true);
 
-                // Wake up cars waiting for the Voie2 green light.
-                feuVertVoie2.signalAll();
+                feuVertVoie2.signalAll(); // Condition.signalAll by Ziyue Ren: wakes up cars waiting for the Voie2 green light.
                 trafficStateChanged.signalAll();
 
             } else {
                 feuVert2 = false;
 
-                // Wait until all Voie2 cars that have entered the intersection have left.
                 while (nmbrVoitureIntersectionV2 != 0) {
-                    voie2_Cars_In_Intersection.await();
+                    voie2_Cars_In_Intersection.await(); // Condition.await by Ziyue Ren: waits until all Voie2 cars already inside have left.
                 }
 
-                // After the current direction is clear, end the yellow phase and switch Voie1 to green.
-                yellowPhase = false;
+                yellowPhase = false; // Ends the yellow phase after the current direction is clear.
                 trafficStateChanged.signalAll();
 
                 feuVert1 = true;
@@ -475,12 +423,10 @@ public class carrefourManager {
                 feuVoie1Red.setEnabled(false);
                 feuVoie2Green.setEnabled(false);
 
-                // Wake up cars waiting for the Voie1 green light.
-                feuVertVoie1.signalAll();
+                feuVertVoie1.signalAll(); // Condition.signalAll by Ziyue Ren: wakes up cars waiting for the Voie1 green light.
                 trafficStateChanged.signalAll();
             }
 
-            // If the main UI is changing the light duration, the traffic light controller thread waits until it is done.
             if (mainStopedTheTimer.get()) {//if the main change light duration
                 mainRestartTimer.await();
             }
@@ -497,8 +443,8 @@ public class carrefourManager {
 
     public void traversee1(JPanel C, int p, int vitess) {
         try {
-            // Phase 1: Move towards the stop line.
             /*
+             * ReentrantLock by Ziyue Ren:
              * Assign a fixed waiting position to this car first.
              * The get and set operations are protected by the same lock,
              * so two cars cannot get the same waiting position.
@@ -512,25 +458,16 @@ public class carrefourManager {
                 verro.unlock();
             }
 
-            for (int j = -60; j < myStopPos; j++) {
+            for (int j = -60; j < myStopPos; j++) { // Phase 1: move towards the stop line.
                 pauseIfStopped();
                 setCarBounds(C, voie1PositionPossible[p - 1], j, 30, 60);
                 Thread.sleep(vitess);
             }
 
             setCarBounds(C, voie1PositionPossible[p - 1], myStopPos, 30, 60);
+            myStopPos = waitGreenAndMoveForwardVoie1(C, p, myStopPos, vitess); // Phase 2: wait for green light or move forward.
 
-            /*
-             * Phase 2: Wait for green light / move forward.
-             * Only the front car can enter the intersection.
-             */
-            myStopPos = waitGreenAndMoveForwardVoie1(C, p, myStopPos, vitess);
-
-            /*
-             * Phase 3: Cross the intersection.
-             * The original waiting position is released only after the car moves one car spacing.
-             */
-            boolean waitingPositionReleased = false;
+            boolean waitingPositionReleased = false; // Phase 3: cross the intersection and release the waiting position after one car spacing.
 
             for (int j = myStopPos; j < 555; j++) {
                 pauseIfStopped();
@@ -548,30 +485,27 @@ public class carrefourManager {
                 releaseVoie1WaitingPosition(C, p);
             }
 
-            // After the car crosses the intersection, return one waiting position to this lane.
             verro.lock();
             try {
                 voit1stopPositionAtomic.set(p - 1,
-                        voit1stopPositionAtomic.get(p - 1) + CAR_SPACING);
+                        voit1stopPositionAtomic.get(p - 1) + CAR_SPACING); // Returns one waiting position to this lane after the car crosses.
                 carSpacingChanged.signalAll();
                 trafficStateChanged.signalAll();
             } finally {
                 verro.unlock();
             }
 
-            // Update the number of Voie1 cars in the intersection and notify the light thread when it is clear.
             verro.lock();
             try {
-                nmbrVoitureIntersectionV1--;
+                nmbrVoitureIntersectionV1--; // ReentrantLock by Ziyue Ren: updates Voie1 intersection counter under the lock.
                 if (nmbrVoitureIntersectionV1 == 0 && !feuVert1) {
-                    voie1_Cars_In_Intersection.signal();
+                    voie1_Cars_In_Intersection.signal(); // Condition.signal by Ziyue Ren: notifies the light controller when Voie1 is clear.
                 }
             } finally {
                 verro.unlock();
             }
 
-            // Phase 4: Leave
-            for (int j = 555; j < 830; j++) {
+            for (int j = 555; j < 830; j++) { // Phase 4: leave the intersection area.
                 pauseIfStopped();
                 setCarBounds(C, voie1PositionPossible[p - 1], j, 30, 60);
                 Thread.sleep(vitess);
@@ -584,8 +518,8 @@ public class carrefourManager {
 
     public void traversee2(JPanel C, int p, int vitess) {
         try {
-            // Phase 1: Move towards the stop line.
             /*
+             * ReentrantLock by Ziyue Ren:
              * Voie2 cars also get a fixed waiting position first.
              * The get + set operation is also protected by the lock.
              */
@@ -598,25 +532,16 @@ public class carrefourManager {
                 verro.unlock();
             }
 
-            for (int j = -60; j < myStopPos; j++) {
+            for (int j = -60; j < myStopPos; j++) { // Phase 1: move towards the stop line.
                 pauseIfStopped();
                 setCarBounds(C, j, voie2PositionPossible[p - 1], 60, 30);
                 Thread.sleep(vitess);
             }
 
             setCarBounds(C, myStopPos, voie2PositionPossible[p - 1], 60, 30);
+            myStopPos = waitGreenAndMoveForwardVoie2(C, p, myStopPos, vitess); // Phase 2: wait for green light or move forward.
 
-            /*
-             * Phase 2: Wait for green light / move forward.
-             * Horizontal cars also need to be at the front before entering the intersection.
-             */
-            myStopPos = waitGreenAndMoveForwardVoie2(C, p, myStopPos, vitess);
-
-            /*
-             * Phase 3: Cross the intersection.
-             * The waiting position is released after one car spacing to avoid overlap.
-             */
-            boolean waitingPositionReleased = false;
+            boolean waitingPositionReleased = false; // Phase 3: cross the intersection and release the waiting position after one car spacing.
 
             for (int j = myStopPos; j < 640; j++) {
                 pauseIfStopped();
@@ -634,30 +559,27 @@ public class carrefourManager {
                 releaseVoie2WaitingPosition(C, p);
             }
 
-            // After the car crosses the intersection, return one waiting position to this lane.
             verro.lock();
             try {
                 voit2stopPositionAtomic.set(p - 1,
-                        voit2stopPositionAtomic.get(p - 1) + CAR_SPACING);
+                        voit2stopPositionAtomic.get(p - 1) + CAR_SPACING); // Returns one waiting position to this lane after the car crosses.
                 carSpacingChanged.signalAll();
                 trafficStateChanged.signalAll();
             } finally {
                 verro.unlock();
             }
 
-            // Update the number of Voie2 cars in the intersection and notify the light thread when it is clear.
             verro.lock();
             try {
-                nmbrVoitureIntersectionV2--;
+                nmbrVoitureIntersectionV2--; // ReentrantLock by Ziyue Ren: updates Voie2 intersection counter under the lock.
                 if (nmbrVoitureIntersectionV2 == 0 && !feuVert2) {
-                    voie2_Cars_In_Intersection.signal();
+                    voie2_Cars_In_Intersection.signal(); // Condition.signal by Ziyue Ren: notifies the light controller when Voie2 is clear.
                 }
             } finally {
                 verro.unlock();
             }
 
-            // Phase 4: Leave
-            for (int j = 640; j < 1035; j++) {
+            for (int j = 640; j < 1035; j++) { // Phase 4: leave the intersection area.
                 pauseIfStopped();
                 setCarBounds(C, j, voie2PositionPossible[p - 1], 60, 30);
                 Thread.sleep(vitess);
