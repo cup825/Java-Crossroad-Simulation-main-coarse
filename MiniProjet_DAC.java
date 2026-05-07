@@ -17,6 +17,7 @@ import javax.swing.JSlider;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import static mini.projet_dac.carrefourManager.*;
+import java.awt.Image;
 
 public class MiniProjet_DAC extends JFrame {
 
@@ -24,6 +25,7 @@ public class MiniProjet_DAC extends JFrame {
     carrefourManager carrefour;          //carrefour manager
     lightManager changeFeu;             //light manager
     Thread createCars;                    //thread that manages the creation of the cars
+
     //Swing components for the graphic interface
     private JPanel containerPanel;
     private JPanel settingPanel;
@@ -51,6 +53,7 @@ public class MiniProjet_DAC extends JFrame {
     static JLabel feuVoie2Red;
     private JPanel feuVoie2Panel;
     private backgroundPanel crossroadPanel;
+
     // atomic varibales are used to avoid concurrency on the use of the same variable by multiple threads ---> this can be replaced by semaphore mutex
     static AtomicInteger duree_de_feu = new AtomicInteger(10000);     //duree between (5000-->5s , 20000-->20s)
     int speed = 4;   //speed between (1-8)
@@ -95,6 +98,19 @@ public class MiniProjet_DAC extends JFrame {
         crossroadPanel.setLayout(null);
         crossroadPanel.setBounds(0, 0, 1035, 840);
 
+        // Added logo on the top-left corner. This is only a UI change and does not affect the traffic logic.
+        JLabel logoImage = new JLabel();
+        Image logoImg = new javax.swing.ImageIcon("NewCastle.png").getImage()
+                .getScaledInstance(150, 110, Image.SCALE_SMOOTH);
+        logoImage.setIcon(new javax.swing.ImageIcon(logoImg));
+        logoImage.setBounds(20, 20, 150, 110);
+        crossroadPanel.add(logoImage);
+
+        JLabel logoText = new JLabel("CSC8016");
+        logoText.setBounds(45, 135, 120, 35);
+        logoText.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 24));
+        logoText.setForeground(java.awt.Color.BLACK);
+        crossroadPanel.add(logoText);
 
         feuVoie2Panel.setLayout(null);
 
@@ -117,22 +133,30 @@ public class MiniProjet_DAC extends JFrame {
 
         feuVoie1Panel.setLayout(null);
 
+        // Resized the Voie 1 traffic light images to fit the vertical traffic light panel.
         feuVoie1Red.setBounds(0, 0, 30, 35);
-        feuVoie1Red.setIcon(new javax.swing.ImageIcon("lights/1*.png"));
+        Image redImg = new javax.swing.ImageIcon("lights/1.png").getImage()
+                .getScaledInstance(30, 35, Image.SCALE_SMOOTH);
+        feuVoie1Red.setIcon(new javax.swing.ImageIcon(redImg));
         feuVoie1Red.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Red);
+
         feuVoie1Orange.setBounds(0, 35, 30, 35);
-        feuVoie1Orange.setIcon(new javax.swing.ImageIcon("lights/3*.jpg"));
+        Image orangeImg = new javax.swing.ImageIcon("lights/3.jpg").getImage()
+                .getScaledInstance(30, 35, Image.SCALE_SMOOTH);
+        feuVoie1Orange.setIcon(new javax.swing.ImageIcon(orangeImg));
         feuVoie1Orange.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Orange);
+
         feuVoie1Green.setBounds(0, 70, 30, 35);
-        feuVoie1Green.setIcon(new javax.swing.ImageIcon("lights/2*.jpg"));
+        Image greenImg = new javax.swing.ImageIcon("lights/2.jpg").getImage()
+                .getScaledInstance(30, 35, Image.SCALE_SMOOTH);
+        feuVoie1Green.setIcon(new javax.swing.ImageIcon(greenImg));
         feuVoie1Green.setEnabled(false);
         feuVoie1Panel.add(feuVoie1Green);
 
         feuVoie1Panel.setBounds(630, 180, 30, 105);
         crossroadPanel.add(feuVoie1Panel);
-
 
         containerPanel.add(crossroadPanel);
 
@@ -335,6 +359,13 @@ public class MiniProjet_DAC extends JFrame {
             createCars = new Thread(new Runnable() { //the work of the thread that creats cars
                 @Override
                 public void run() {
+                    /*
+                     * Store the last created car for each entry lane.
+                     * This prevents two cars from being created too close to each other at the same entry.
+                     */
+                    JPanel[] lastCarVoie1 = new JPanel[4];
+                    JPanel[] lastCarVoie2 = new JPanel[4];
+
                     int voie1Position;
                     int voie2Position;
 
@@ -361,7 +392,6 @@ public class MiniProjet_DAC extends JFrame {
                                     }finally{
                                         verro.unlock();
                                     }
-
                                 }
                             }
                         } catch (InterruptedException ex) {
@@ -369,19 +399,43 @@ public class MiniProjet_DAC extends JFrame {
                         }
 
                         for (int i = 0; i < carsPerWave; i++) {
-                            voie1Position = (new Random().nextInt(4)) + 1;//taking random position for the car in voie1
-                            voie2Position = (new Random().nextInt(4)) + 1;//taking random position for the car in voie2
+                            /*
+                             * Choose a random entry for Voie1.
+                             * If the previous car in that entry is still too close to the start,
+                             * choose again to avoid overlap at creation.
+                             */
+                            while (true) {
+                                voie1Position = (new Random().nextInt(4)) + 1;
+                                if (lastCarVoie1[voie1Position - 1] == null || lastCarVoie1[voie1Position - 1].getBounds().y >= 20) {
+                                    break;
+                                }
+                            }
+
+                            /*
+                             * Same check for Voie2, using the x position because cars move horizontally.
+                             */
+                            while (true) {
+                                voie2Position = (new Random().nextInt(4)) + 1;
+                                if (lastCarVoie2[voie2Position - 1] == null || lastCarVoie2[voie2Position - 1].getBounds().x >= 20) {
+                                    break;
+                                }
+                            }
 
                             voitureV1_V2 voitureVoie1;
                             voitureV2_V1 voitureVoie2;
+
                             C1 = new imgVoitureVoie1();
                             C1.setOpaque(true);
                             C1.setBounds(0, -60, 30, 60);
                             crossroadPanel.add(C1);
+                            lastCarVoie1[voie1Position - 1] = C1;
+
                             C2 = new imgVoitureVoie2();
                             C2.setOpaque(true);
                             crossroadPanel.add(C2);
                             C2.setBounds(-60, 0, 60, 30);
+                            lastCarVoie2[voie2Position - 1] = C2;
+
                             voitureVoie1 = new voitureV1_V2(carrefour, C1, voie1Position, voie1Position * speed);//creating the car thread
                             voitureVoie2 = new voitureV2_V1(carrefour, C2, voie2Position, voie2Position * speed);//creating the car thread
                             voitureVoie1.start();
@@ -400,7 +454,6 @@ public class MiniProjet_DAC extends JFrame {
                     seconds.set(duree_de_feu.get() / 1000);
                     lightTimer.setText(String.valueOf(seconds.get()));
                     */
-
                 }
             });
             createCars.start();
